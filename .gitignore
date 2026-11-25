@@ -1,0 +1,53 @@
+.env
+srcs/member3_ids/generated.rules
+__pycache__/
+*.pyc
+*.key
+*.pem
+*.pcap
+*.log
+
+.venv/
+venv/
+.pytest_cache/
+.vscode/
+.idea/
+*.zip
+*.bundle
+*.local.yaml
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Runtime evidence
+evidence-*/
+
+# Local temporary files
+paused-containers.txt
+*.bak
+*.tmp
+*.log
+
+# Private keys
+*.key
+*.pem
+*.p12
+*.pfx
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Microsoft Word temporary files
+~$*

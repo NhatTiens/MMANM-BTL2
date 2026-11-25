@@ -1,0 +1,24 @@
+name: Team ownership
+'on':
+  pull_request:
+    branches: [develop, main]
+permissions:
+  contents: read
+jobs:
+  ownership:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.base.sha }}
+      - name: Check paths using trusted base version
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+          TARGET: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          git fetch origin "refs/pull/$PR_NUMBER/head"
+          python3 scripts/team_guard.py --base "$BASE" --head "$HEAD_SHA" --branch "$HEAD_BRANCH" --target "$TARGET"

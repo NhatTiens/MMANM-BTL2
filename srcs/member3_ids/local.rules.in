@@ -1,0 +1,16 @@
+# Local classroom rules. Keep SIDs 1000001-1000007 stable for shared smoke tests.
+# HTTP plaintext only; rate rules are heuristics, not proof of compromise.
+alert tcp any any -> any 8080 (msg:"LAB leader MSSV payload"; flow:to_server,established; content:"|@MSSV_HEX@|"; sid:1000001; rev:1;)
+alert tcp any any -> any 8080 (msg:"LAB SQLi marker only"; flow:to_server,established; content:"LAB_SQLI"; sid:1000002; rev:1;)
+alert tcp any any -> any 8080 (msg:"LAB XSS marker only"; flow:to_server,established; content:"LAB_XSS"; sid:1000003; rev:1;)
+alert tcp any any -> any 8080 (msg:"LAB C2 marker only"; flow:to_server,established; content:"LAB_C2"; sid:1000004; rev:1;)
+alert tcp any any -> any any (msg:"LAB possible scan repeated SYN from source"; flags:S; threshold:type both, track by_src, count 5, seconds 10; sid:1000005; rev:2;)
+alert tcp any any -> any 8080 (msg:"LAB repeated marker heuristic"; flow:to_server,established; content:"LAB_RATE"; threshold:type both, track by_src, count 5, seconds 10; sid:1000006; rev:1;)
+drop tcp any any -> any 8080 (msg:"LAB inline deny marker"; flow:to_server,established; content:"LAB_BLOCK"; sid:1000007; rev:1;)
+# Pattern-based HTTP signatures, alert-only pending FP evaluation.
+alert http any any -> any 8080 (msg:"LAB possible SQLi UNION SELECT in URI"; flow:established,to_server; http.uri; content:"union"; nocase; pcre:"/\bunion(?:\s|%20)+select\b/i"; sid:1000010; rev:1;)
+alert http any any -> any 8080 (msg:"LAB possible XSS script tag in body"; flow:established,to_server; http.request_body; content:"<script"; nocase; pcre:"/<script(?:\s|>)/i"; sid:1000011; rev:1;)
+alert http any any -> any 8080 (msg:"LAB simulated C2 host and beacon path"; flow:established,to_server; http.host; content:"c2-demo.invalid"; bsize:15; http.uri; content:"/beacon"; startswith; sid:1000012; rev:1;)
+alert tcp any any -> any any (msg:"LAB possible SYN flood aggregate to destination"; flags:S; threshold:type both, track by_dst, count 12, seconds 5; sid:1000013; rev:1;)
+alert http any any -> any 8080 (msg:"LAB possible SQLi UNION SELECT in body"; flow:established,to_server; http.request_body; content:"union"; nocase; pcre:"/\bunion\s+select\b/i"; sid:1000014; rev:1;)
+alert http any any -> any 8080 (msg:"LAB possible XSS script tag in URI"; flow:established,to_server; http.uri; content:"script"; nocase; pcre:"/(?:<|%3c)script(?:\s|>|%3e|%20)/i"; sid:1000015; rev:1;)

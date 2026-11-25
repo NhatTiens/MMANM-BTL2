@@ -1,0 +1,2 @@
+# TV4 validation
+Actual: 15 TV4 unit/API tests, 83 total PASS; Node JS syntax PASS. HTTP endpoints exercised via Python local server. Browser attempt failed: Chromium ERR_BLOCKED_BY_ADMINISTRATOR on loopback. Browser acceptance not established. Docker/Suricata/WireGuard kernel not available. Integration and all prior runtime cases remain pending. See validation package unit.log and browser.log. No fabricated screenshots or metrics.

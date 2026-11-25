@@ -1,0 +1,8 @@
+# Optional overlay for shared Compose: enable headless chat demo on vpn-client.
+# Usage from repo root: docker compose -f compose.yaml -f srcs/member2_vpn/compose.chat.yaml --profile vpn --profile legacy up -d --build
+services:
+  vpn-client:
+    build:
+      context: .
+      dockerfile: srcs/member2_vpn/Dockerfile
+    command: [sh, /lab/wireguard/client.sh]

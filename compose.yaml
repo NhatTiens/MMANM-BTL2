@@ -1,0 +1,171 @@
+name: mmanm-btl2
+services:
+  vpn-init:
+    build:
+      context: .
+      dockerfile: srcs/member1_firewall/Dockerfile
+    command: ["sh", "/lab/vpn/init.sh"]
+    network_mode: none
+    volumes:
+      - vpn_gateway:/keys/gateway
+      - vpn_client:/keys/client
+    profiles: [tools]
+  gateway:
+    build:
+      context: .
+      dockerfile: srcs/member1_firewall/Dockerfile
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls:
+      net.ipv4.ip_forward: '1'
+    environment:
+      DMZ_NET: ${DMZ_NET:?Run scripts/configure.py}
+      DMZ_WEB: ${DMZ_WEB}
+      DMZ_GW: ${DMZ_GW}
+      VPN_ENABLED: ${VPN_ENABLED:-1}
+      IPS_MODE: ${IPS_MODE:-ids}
+    volumes:
+      - vpn_gateway:/keys:ro
+      - firewall_logs:/logs
+    networks:
+      external: {ipv4_address: 172.28.50.254}
+      dmz: {ipv4_address: '${DMZ_GW}'}
+      internal_net: {ipv4_address: 172.28.60.254}
+    healthcheck:
+      test: [CMD-SHELL, 'test -f /tmp/gateway-ready']
+      interval: 3s
+      timeout: 2s
+      retries: 15
+  dmz-web:
+    build:
+      context: .
+      dockerfile: srcs/member2_vpn/Dockerfile
+    cap_add: [NET_ADMIN]
+    environment:
+      ROUTER: ${DMZ_GW}
+      SERVICE_IP: ${DMZ_WEB}
+      ROLE: dmz
+    depends_on:
+      gateway: {condition: service_healthy}
+    volumes:
+      - ca_public:/public-ca
+    networks:
+      dmz: {ipv4_address: '${DMZ_WEB}'}
+  internal-app:
+    build:
+      context: .
+      dockerfile: srcs/member2_vpn/Dockerfile
+    cap_add: [NET_ADMIN]
+    environment:
+      ROUTER: 172.28.60.254
+      ROLE: internal
+    depends_on:
+      gateway: {condition: service_healthy}
+    networks:
+      internal_net: {ipv4_address: 172.28.60.10}
+  external-client:
+    build:
+      context: .
+      dockerfile: srcs/member2_vpn/Dockerfile
+    cap_add: [NET_ADMIN]
+    environment:
+      ROUTER: 172.28.50.254
+      ROLE: client
+    depends_on:
+      gateway: {condition: service_healthy}
+    volumes:
+      - ca_public:/public-ca:ro
+    networks:
+      external: {ipv4_address: 172.28.50.10}
+  vpn-client:
+    build:
+      context: .
+      dockerfile: srcs/member1_firewall/Dockerfile
+    cap_add: [NET_ADMIN]
+    command: ["sh", "/lab/vpn/client.sh"]
+    environment:
+      DMZ_NET: ${DMZ_NET}
+    depends_on:
+      gateway: {condition: service_healthy}
+    volumes:
+      - vpn_client:/keys:ro
+      - ca_public:/public-ca:ro
+    networks:
+      external: {ipv4_address: 172.28.50.20}
+    profiles: [vpn]
+  suricata:
+    build:
+      context: .
+      dockerfile: srcs/member3_ids/Dockerfile
+    network_mode: service:gateway
+    cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
+    environment:
+      IPS_MODE: ${IPS_MODE:-ids}
+    depends_on:
+      gateway: {condition: service_healthy}
+    volumes:
+      - ./srcs/member3_ids/generated.rules:/rules/local.rules:ro
+      - ids_logs:/logs
+    healthcheck:
+      test: [CMD-SHELL, 'test -f /logs/eve.json && (pgrep -x suricata || pgrep -x Suricata-Main) >/dev/null']
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 15s
+  dashboard:
+    build:
+      context: .
+      dockerfile: srcs/member4_dashboard/Dockerfile
+    ports: ["127.0.0.1:8502:8501"]
+    volumes:
+      - firewall_logs:/data/firewall:ro
+      - ids_logs:/data/ids:ro
+    networks: [management]
+  legacy-chat:
+    build:
+      context: .
+      dockerfile: srcs/member2_vpn/Dockerfile
+    cap_add: [NET_ADMIN]
+    environment:
+      ROUTER: 172.28.60.254
+      ROLE: relay
+    depends_on:
+      gateway: {condition: service_healthy}
+    networks:
+      internal_net: {ipv4_address: 172.28.60.30}
+    profiles: [legacy]
+networks:
+  external:
+    driver: bridge
+    internal: false
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config: [{subnet: 172.28.50.0/24}]
+  dmz:
+    driver: bridge
+    internal: false
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config: [{subnet: '${DMZ_NET}'}]
+  internal_net:
+    driver: bridge
+    internal: false
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config: [{subnet: 172.28.60.0/24}]
+  management:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.250.0/24
+volumes:
+  vpn_gateway: {}
+  vpn_client: {}
+  ca_public: {}
+  ids_logs: {}
+  firewall_logs: {}

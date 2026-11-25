@@ -1,0 +1,65 @@
+# Run from repo root with: docker compose --env-file .env -f srcs/member1_firewall/compose.lab.yaml ...
+name: mmanm-member1-lab
+x-image: &image
+  image: mmanm-member1-lab:local
+  build:
+    context: ../..
+    dockerfile: srcs/member1_firewall/Dockerfile
+x-endpoint: &endpoint
+  <<: *image
+  command: [python3, /lab/firewall/lab_endpoint.py]
+  cap_add: [NET_ADMIN]
+  depends_on:
+    gateway: {condition: service_healthy}
+services:
+  gateway:
+    <<: *image
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls:
+      net.ipv4.ip_forward: '1'
+    environment:
+      DMZ_NET: ${DMZ_NET:?Run scripts/configure.py}
+      DMZ_GW: ${DMZ_GW:?Run scripts/configure.py}
+      DMZ_WEB: ${DMZ_WEB:?Run scripts/configure.py}
+      VPN_ENABLED: '0'
+      IPS_MODE: ids
+    volumes: [fw_lab_logs:/logs]
+    networks:
+      external: {ipv4_address: 172.28.50.254}
+      dmz: {ipv4_address: '${DMZ_GW}'}
+      internal_net: {ipv4_address: 172.28.60.254}
+    healthcheck:
+      test: [CMD-SHELL, 'test -f /tmp/gateway-ready']
+      interval: 2s
+      timeout: 2s
+      retries: 15
+  external-client:
+    <<: *endpoint
+    environment: {ROUTER: 172.28.50.254, ROLE: client}
+    networks:
+      external: {ipv4_address: 172.28.50.10}
+  dmz-web:
+    <<: *endpoint
+    environment: {ROUTER: '${DMZ_GW}', ROLE: server}
+    networks:
+      dmz: {ipv4_address: '${DMZ_WEB}'}
+  internal-app:
+    <<: *endpoint
+    environment: {ROUTER: 172.28.60.254, ROLE: server}
+    networks:
+      internal_net: {ipv4_address: 172.28.60.10}
+networks:
+  external:
+    internal: true
+    ipam:
+      config: [{subnet: 172.28.50.0/24}]
+  dmz:
+    internal: true
+    ipam:
+      config: [{subnet: '${DMZ_NET}'}]
+  internal_net:
+    internal: true
+    ipam:
+      config: [{subnet: 172.28.60.0/24}]
+volumes:
+  fw_lab_logs: {}

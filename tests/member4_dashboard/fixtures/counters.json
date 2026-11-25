@@ -1,0 +1,1 @@
+{"timestamp":1767225600,"rules":[{"rule":"SYNTHETIC FW_EXT_DMZ_WEB","packets":15,"bytes":1000},{"rule":"SYNTHETIC FW_FWD_DEFAULT","packets":3,"bytes":120}]}

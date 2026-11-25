@@ -1,0 +1,116 @@
+name: mmanm-member2-lab
+x-gateway-image: &gateway-image
+  image: mmanm-member2-gateway:local
+  build:
+    context: ../..
+    dockerfile: srcs/member1_firewall/Dockerfile
+x-service-image: &service-image
+  image: mmanm-member2-service:local
+  build:
+    context: ../..
+    dockerfile: srcs/member2_vpn/Dockerfile
+x-endpoint: &endpoint
+  <<: *service-image
+  cap_add: [NET_ADMIN]
+  depends_on:
+    gateway: {condition: service_healthy}
+services:
+  vpn-init:
+    <<: *gateway-image
+    command: [sh, /lab/vpn/init.sh]
+    network_mode: none
+    volumes:
+      - vpn_gateway:/keys/gateway
+      - vpn_client:/keys/client
+    profiles: [tools]
+  gateway:
+    <<: *gateway-image
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls:
+      net.ipv4.ip_forward: '1'
+    environment:
+      DMZ_NET: ${DMZ_NET:?Run scripts/configure.py}
+      DMZ_GW: ${DMZ_GW:?Run scripts/configure.py}
+      DMZ_WEB: ${DMZ_WEB:?Run scripts/configure.py}
+      VPN_ENABLED: '1'
+      IPS_MODE: ids
+    volumes:
+      - vpn_gateway:/keys:ro
+      - firewall_logs:/logs
+    networks:
+      external: {ipv4_address: 172.28.50.254}
+      dmz: {ipv4_address: '${DMZ_GW}'}
+      internal_net: {ipv4_address: 172.28.60.254}
+    healthcheck:
+      test: [CMD-SHELL, 'test -f /tmp/gateway-ready && wg show wg0 >/dev/null']
+      interval: 3s
+      timeout: 2s
+      retries: 20
+  dmz-web:
+    <<: *endpoint
+    environment: {ROLE: dmz, ROUTER: '${DMZ_GW}', SERVICE_IP: '${DMZ_WEB}'}
+    volumes: [ca_public:/public-ca]
+    networks:
+      dmz: {ipv4_address: '${DMZ_WEB}'}
+    healthcheck:
+      test: [CMD-SHELL, 'curl --noproxy "*" -fsS --max-time 3 --cacert /public-ca/root_ca.crt https://$${SERVICE_IP}:8443/ >/dev/null']
+      interval: 3s
+      timeout: 4s
+      retries: 20
+  internal-app:
+    <<: *endpoint
+    environment: {ROLE: internal, ROUTER: 172.28.60.254}
+    networks:
+      internal_net: {ipv4_address: 172.28.60.10}
+    healthcheck:
+      test: [CMD-SHELL, 'curl --noproxy "*" -fsS --max-time 3 http://127.0.0.1:8080/ >/dev/null']
+      interval: 3s
+      timeout: 4s
+      retries: 20
+  external-client:
+    <<: *endpoint
+    environment: {ROLE: client, ROUTER: 172.28.50.254}
+    volumes: [ca_public:/public-ca:ro]
+    networks:
+      external: {ipv4_address: 172.28.50.10}
+  vpn-client:
+    <<: *endpoint
+    command: [sh, /lab/wireguard/client.sh]
+    environment: {DMZ_NET: '${DMZ_NET}'}
+    volumes: [vpn_client:/keys:ro, ca_public:/public-ca:ro]
+    networks:
+      external: {ipv4_address: 172.28.50.20}
+    healthcheck:
+      test: [CMD-SHELL, 'wg show wg0 >/dev/null && ip -4 route show dev wg0 | grep -q 172.28.60.0/24']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  legacy-chat:
+    <<: *endpoint
+    environment: {ROLE: relay, ROUTER: 172.28.60.254}
+    networks:
+      internal_net: {ipv4_address: 172.28.60.30}
+    healthcheck:
+      # Checking listen state without consuming a relay session.
+      test: [CMD-SHELL, 'ss -lnt | grep -q ":9999 "']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+networks:
+  external:
+    internal: true
+    ipam:
+      config: [{subnet: 172.28.50.0/24}]
+  dmz:
+    internal: true
+    ipam:
+      config: [{subnet: '${DMZ_NET}'}]
+  internal_net:
+    internal: true
+    ipam:
+      config: [{subnet: 172.28.60.0/24}]
+volumes:
+  vpn_gateway: {}
+  vpn_client: {}
+  firewall_logs: {}
+  ca_public: {}
